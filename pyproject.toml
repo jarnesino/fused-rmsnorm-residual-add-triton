@@ -1,0 +1,64 @@
+[project]
+name = "fused-rmsnorm-residual-add"
+version = "0.1.0"
+description = "Fused RMSNorm and residual-add forward kernel in Triton"
+requires-python = ">=3.12"
+dependencies = [
+  "triton>=3.0",
+]
+license = "MIT"  # This is just for others to check out
+
+[project.optional-dependencies]
+# Exactly one of these per environment ([tool.uv].conflicts):
+cpu = ["torch"]      # Container and GitHub CI
+cu128 = ["torch"]    # Colab
+bench = ["pandas", "matplotlib", "liger-kernel"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff"]
+
+[tool.uv]
+# Lock only for Linux (Triton only has Linux wheels)
+environments = ["sys_platform == 'linux'"]
+conflicts = [[{ extra = "cpu" }, { extra = "cu128" }]]
+
+[tool.uv.sources]
+# PyTorch ships different builds of the same version at different URLs.
+#  Route torch by extra so the container and CI get the small CPU wheel
+#  (PyPI would pull gigabytes of unused CUDA libraries by default) and
+#  Colab gets a pinned CUDA 12.8 build instead of what the notebook has.
+torch = [
+  { index = "pytorch-cpu",   extra = "cpu" },
+  { index = "pytorch-cu128", extra = "cu128" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true  # Only used for packages routed here, never for general lookups
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true  # Only used for packages routed here, never for general lookups
+
+[build-system]
+# To build inside the container
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fused-rmsnorm-residual-add"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]  # Only look for tests inside this folder
+markers = [
+  "gpu: needs a real CUDA device (skipped under TRITON_INTERPRET=1 / no CUDA)",
+]  # Set custom marker
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
