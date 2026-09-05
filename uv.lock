@@ -267,6 +267,7 @@ name = "fused-rmsnorm-residual-add"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "numpy" },
     { name = "triton" },
 ]
 
@@ -293,6 +294,7 @@ dev = [
 requires-dist = [
     { name = "liger-kernel", marker = "extra == 'bench'" },
     { name = "matplotlib", marker = "extra == 'bench'" },
+    { name = "numpy", specifier = ">=2.5.2" },
     { name = "pandas", marker = "extra == 'bench'" },
     { name = "torch", marker = "extra == 'cpu'", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "fused-rmsnorm-residual-add", extra = "cpu" } },
     { name = "torch", marker = "extra == 'cu128'", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "fused-rmsnorm-residual-add", extra = "cu128" } },

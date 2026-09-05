@@ -30,4 +30,8 @@ def test_triton_runs(device):
 
 
 def test_versions_print():
-    print(f"\ntorch {torch.__version__}  triton {triton.__version__}  cuda={torch.cuda.is_available()}")
+    print(
+        f"\ntorch {torch.__version__}"
+        f"  triton {triton.__version__}"
+        f"  cuda={torch.cuda.is_available()}"
+    )
