@@ -1,0 +1,90 @@
+version: "3"
+
+vars:
+  DC: docker compose
+  RUN: docker compose run --rm dev  # fresh container for each command
+
+tasks:
+  default:
+    cmds: [task --list]
+
+  # ---------- Environment ----------
+
+  build:
+    desc: Build the dev image (only when updating the Dockerfile)
+    cmds: ["{{.DC}} build"]
+
+  setup:
+    desc: Build image, resolve lock and install CPU dependencies
+    cmds:
+      - task: build
+      - task: lock
+      - task: sync
+
+  lock:
+    desc: Resolve uv.lock (for both container and Colab)
+    cmds: ["{{.RUN}} uv lock"]
+
+  sync:
+    desc: Install dependencies into the container virtual environment (CPU torch + dev tools)
+    cmds: ["{{.RUN}} uv sync --frozen --extra cpu"]
+
+  add:
+    desc: "Add a dependency: task add -- <pkg>  (or task add -- --group dev <pkg>)"
+    cmds:
+      - "{{.RUN}} uv add {{.CLI_ARGS}}"
+      - task: sync
+
+  shell:
+    desc: Run interactive shell in the container
+    interactive: true
+    cmds: ["{{.RUN}} bash"]
+
+  py:
+    desc: Run Python REPL in the container
+    interactive: true
+    cmds: ["{{.RUN}} uv run python"]
+
+  # ---------- Quality ----------
+
+  lint:
+    desc: Run format check
+    cmds:
+      - "{{.RUN}} uv run ruff check ."
+      - "{{.RUN}} uv run ruff format --check ."
+
+  fmt:
+    desc: Run format fix
+    cmds:
+      - "{{.RUN}} uv run ruff check --fix ."
+      - "{{.RUN}} uv run ruff format ."
+
+  test:
+    desc: CPU test suite under TRITON_INTERPRET=1
+    cmds: ["{{.RUN}} uv run pytest -m 'not gpu' -q {{.CLI_ARGS}}"]
+
+  check:
+    desc: Run lint and test
+    cmds:
+      - task: lint
+      - task: test
+
+  # ---------- GPU (Colab-only) ----------
+
+  gpu:sync:
+    desc: "[GPU host] Install CUDA torch and bench extras"
+    cmds: ["uv sync --frozen --extra cu128 --extra bench"]
+
+  gpu:test:
+    desc: "[GPU host] Run full test matrix"
+    cmds: ["uv run pytest -q {{.CLI_ARGS}}"]
+
+  gpu:bench:
+    desc: "[GPU host] Run the benchmark sweeps"
+    cmds: ["uv run python benchmarks/bench_forward.py {{.CLI_ARGS}}"]
+
+  # ---------- Housekeeping ----------
+
+  clean:
+    desc: Remove containers and venv/cache volumes (full reset)
+    cmds: ["{{.DC}} down -v"]
