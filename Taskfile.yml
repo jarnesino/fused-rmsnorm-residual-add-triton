@@ -2,7 +2,7 @@ version: "3"
 
 vars:
   DC: docker compose
-  RUN: docker compose run --rm dev  # fresh container for each command
+  RUN: docker compose run --rm --remove-orphans dev  # fresh container for each command
 
 tasks:
   default:

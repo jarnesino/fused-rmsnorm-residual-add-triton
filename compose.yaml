@@ -1,3 +1,5 @@
+name: fused-rmsnorm-residual-add-triton
+
 services:
   dev:
     build: .
