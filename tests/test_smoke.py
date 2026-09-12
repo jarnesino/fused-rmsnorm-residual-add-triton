@@ -8,30 +8,30 @@ import torch
 import triton
 import triton.language as tl
 
+def _add_kernel(X, Y, Z, N, grid, block_size):
+    _add_kernel_using_constant_block_size[grid](X, Y, Z, N, tl.constexpr(block_size))
 
 @triton.jit
-def _add_kernel(X, Y, Z, N, BLOCK: tl.constexpr):
+def _add_kernel_using_constant_block_size(x_ptr, y_ptr, output_ptr, number_of_elements, block_size: tl.constexpr):
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N
-    x = tl.load(X + offs, mask=mask, other=0.0)
-    y = tl.load(Y + offs, mask=mask, other=0.0)
-    tl.store(Z + offs, x + y, mask=mask)
+    offset = pid * block_size + tl.arange(0, block_size)
+    mask = offset < number_of_elements
+
+    x = tl.load(x_ptr + offset, mask=mask, other=0.0)
+    y = tl.load(y_ptr + offset, mask=mask, other=0.0)
+
+    tl.store(output_ptr + offset, x + y, mask=mask)
 
 
 def test_triton_runs(device):
-    n = 1000  # deliberately not a power of two: exercises the mask
+    block_size = 256
+    n = 1000  # Not divisible by the block size (needs the mask)
     x = torch.randn(n, device=device)
     y = torch.randn(n, device=device)
     z = torch.empty_like(x)
-    grid = (triton.cdiv(n, 256),)
-    _add_kernel[grid](x, y, z, n, BLOCK=256)
+    grid = (triton.cdiv(n, block_size),)
+
+    _add_kernel(x, y, z, n, grid, block_size)
+
     torch.testing.assert_close(z, x + y)
 
-
-def test_versions_print():
-    print(
-        f"\ntorch {torch.__version__}"
-        f"  triton {triton.__version__}"
-        f"  cuda={torch.cuda.is_available()}"
-    )
