@@ -8,11 +8,15 @@ import torch
 import triton
 import triton.language as tl
 
+
 def _add_kernel(X, Y, Z, N, grid, block_size):
     _add_kernel_using_constant_block_size[grid](X, Y, Z, N, tl.constexpr(block_size))
 
+
 @triton.jit
-def _add_kernel_using_constant_block_size(x_ptr, y_ptr, output_ptr, number_of_elements, block_size: tl.constexpr):
+def _add_kernel_using_constant_block_size(
+    x_ptr, y_ptr, output_ptr, number_of_elements, block_size: tl.constexpr
+):
     pid = tl.program_id(0)
     offset = pid * block_size + tl.arange(0, block_size)
     mask = offset < number_of_elements
@@ -34,4 +38,3 @@ def test_triton_runs(device):
     _add_kernel(x, y, z, n, grid, block_size)
 
     torch.testing.assert_close(z, x + y)
-
