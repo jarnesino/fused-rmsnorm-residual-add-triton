@@ -13,6 +13,7 @@ def test_cpu_softmax(device):
     torch_result = torch.softmax(x, dim=1)
     assert torch.allclose(triton_result, torch_result, rtol=1e-5, atol=1e-5)
 
+
 @pytest.mark.gpu
 def test_gpu_softmax(device):
     torch.manual_seed(0)

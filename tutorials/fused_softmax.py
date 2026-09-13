@@ -28,18 +28,26 @@ def gpu_softmax(input):
     result = torch.empty_like(input)
 
     kernel_arguments = (
-        result, input, result.stride(0), input.stride(0),
-        number_of_rows, number_of_columns, block_size,
+        result,
+        input,
+        result.stride(0),
+        input.stride(0),
+        number_of_rows,
+        number_of_columns,
+        block_size,
     )
 
     kernel, grid, number_of_stages = compile_persistent_kernel(
-        softmax_kernel_with_one_row_per_block, kernel_arguments, input.device,
-        number_of_work_items=number_of_rows
+        softmax_kernel_with_one_row_per_block,
+        kernel_arguments,
+        input.device,
+        number_of_work_items=number_of_rows,
     )
 
     kernel[grid](*kernel_arguments, number_of_stages)
 
     return result
+
 
 def compile_persistent_kernel(kernel_function, kernel_arguments, device, number_of_work_items):
     """
@@ -54,16 +62,14 @@ def compile_persistent_kernel(kernel_function, kernel_arguments, device, number_
     number_of_warps = 8
 
     kernel = kernel_function.warmup(
-        *kernel_arguments, num_stages=number_of_stages, num_warps=number_of_warps, grid=(1, )
+        *kernel_arguments, num_stages=number_of_stages, num_warps=number_of_warps, grid=(1,)
     )  # Pre-compile kernel to infer register usage and later calculate thread occupancy
 
     kernel._init_handles()  # Load kernel onto device
     registers_per_thread = kernel.n_regs
     shared_memory_bytes_per_program = kernel.metadata.shared
 
-    registers_per_program = (
-        registers_per_thread * device_properties.warp_size() * number_of_warps
-    )
+    registers_per_program = registers_per_thread * device_properties.warp_size() * number_of_warps
     shared_memory_divisor = max(shared_memory_bytes_per_program, 1)  # To avoid zero division
     programs_per_multiprocessor = min(
         device_properties.max_registers_per_multiprocessor() // registers_per_program,
@@ -79,10 +85,17 @@ def compile_persistent_kernel(kernel_function, kernel_arguments, device, number_
 
     return kernel, grid, number_of_stages
 
+
 @triton.jit
 def softmax_kernel_with_one_row_per_block(
-        output_ptr, input_ptr, output_row_stride, input_row_stride,
-        n_rows, n_cols, block_size, num_stages: tl.constexpr
+    output_ptr,
+    input_ptr,
+    output_row_stride,
+    input_row_stride,
+    n_rows,
+    n_cols,
+    block_size,
+    num_stages: tl.constexpr,
 ):
     starting_row_index = tl.program_id(0)
     row_step = tl.num_programs(0)
@@ -93,7 +106,7 @@ def softmax_kernel_with_one_row_per_block(
         input_ptrs = row_start_ptr + column_offsets
 
         mask = column_offsets < n_cols  # Just in case the row does not fill the whole column
-        negative_infinity = -float('inf')
+        negative_infinity = -float("inf")
         row = tl.load(input_ptrs, mask=mask, other=negative_infinity)  # Load row into SRAM
 
         axis = 0  # Blocks have only one axis (which has index 0)
