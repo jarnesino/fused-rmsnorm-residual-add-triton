@@ -63,7 +63,7 @@ def compile_persistent_kernel(kernel_function, kernel_arguments, device, number_
 
     # Heuristics
     number_of_stages = 4 if device_properties.max_shared_memory_bytes() > 200_000 else 2
-    number_of_warps = 8
+    number_of_warps = 4
 
     kernel = kernel_function.warmup(
         *kernel_arguments, num_stages=number_of_stages, num_warps=number_of_warps, grid=(1,)
