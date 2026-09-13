@@ -4,10 +4,16 @@ import torch
 import triton
 import triton.testing
 
-from tutorials.fused_softmax import cpu_softmax, gpu_softmax, torch_softmax
+from tutorials.fused_softmax import (
+    cpu_softmax,
+    gpu_softmax_with_one_program_per_row,
+    gpu_softmax_with_persistent_grid,
+    torch_softmax,
+)
 
 PROVIDERS = {
-    "triton": gpu_softmax,
+    "triton_one_program_per_row": gpu_softmax_with_one_program_per_row,
+    "triton_persistent_grid": gpu_softmax_with_persistent_grid,
     "torch": torch_softmax,
     "naive": cpu_softmax,
 }
@@ -17,8 +23,8 @@ triton_benchmark = triton.testing.Benchmark(
     x_vals=[128 * i for i in range(2, 100)],
     line_arg="provider",
     line_vals=list(PROVIDERS),
-    line_names=["Triton", "Torch", "Naive"],
-    styles=[("green", "-"), ("blue", "-"), ("red", "-")],
+    line_names=["Triton (one program per row)", "Triton (persistent grid)", "Torch", "Naive"],
+    styles=[("green", "-"), ("green", "--"), ("blue", "-"), ("red", "-")],
     ylabel="GB/s",
     plot_name="softmax-bandwidth",
     args={"number_of_rows": 4096},

@@ -26,7 +26,31 @@ def cpu_softmax(input):
     return ret
 
 
-def gpu_softmax(input):
+def gpu_softmax_with_one_program_per_row(input):
+    """One program per row; the hardware scheduler decides how many run at once."""
+    number_of_rows, number_of_columns = input.shape
+    block_size = triton.next_power_of_2(number_of_columns)
+    result = torch.empty_like(input)
+
+    # Heuristics
+    number_of_stages = 2
+    number_of_warps = tl.constexpr(4)
+
+    softmax_kernel_with_one_row_per_block[(number_of_rows,)](
+        result,
+        input,
+        result.stride(0),
+        input.stride(0),
+        number_of_rows,
+        number_of_columns,
+        tl.constexpr(block_size),
+        number_of_stages,
+        num_warps=number_of_warps,
+    )
+    return result
+
+
+def gpu_softmax_with_persistent_grid(input):
     number_of_rows, number_of_columns = input.shape
     block_size = triton.next_power_of_2(number_of_columns)
     result = torch.empty_like(input)
