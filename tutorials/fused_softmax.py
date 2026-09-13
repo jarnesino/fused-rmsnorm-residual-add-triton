@@ -34,7 +34,7 @@ def gpu_softmax(input):
         input.stride(0),
         number_of_rows,
         number_of_columns,
-        block_size,
+        tl.constexpr(block_size),
     )
 
     kernel, grid, number_of_stages = compile_persistent_kernel(
@@ -109,13 +109,11 @@ def softmax_kernel_with_one_row_per_block(
         negative_infinity = -float("inf")
         row = tl.load(input_ptrs, mask=mask, other=negative_infinity)  # Load row into SRAM
 
-        axis = 0  # Blocks have only one axis (which has index 0)
-
         # Avoids overflows (softmax is invariant to this)
-        adjusted_row = row - tl.max(row, axis=axis)
+        adjusted_row = row - tl.max(row, axis=0)
 
         numerator = tl.exp(adjusted_row)  # Fast but approximate
-        denominator = tl.sum(numerator, axis=axis)
+        denominator = tl.sum(numerator, axis=0)
 
         softmax_output = numerator / denominator
 
