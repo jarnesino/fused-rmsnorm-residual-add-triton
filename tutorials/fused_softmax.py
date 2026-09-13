@@ -5,11 +5,15 @@ import triton.language as tl
 from tutorials.device import DeviceProperties
 
 
-def cpu_softmax(x):
+def torch_softmax(input):
+    return torch.softmax(input, dim=-1)
+
+
+def cpu_softmax(input):
     # Read MN elements and write M elements
-    maximum_value = x.max(dim=1)[0]
+    maximum_value = input.max(dim=1)[0]
     # Read MN + M elements and write MN elements
-    adjusted_x = x - maximum_value[:, None]  # Avoids overflows (softmax is invariant to this)
+    adjusted_x = input - maximum_value[:, None]  # Avoids overflows (softmax is invariant to this)
 
     # Read MN elements and write MN elements
     numerator = torch.exp(adjusted_x)

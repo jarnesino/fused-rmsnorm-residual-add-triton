@@ -83,6 +83,15 @@ tasks:
     desc: "[GPU host] Run the benchmark sweeps"
     cmds: ["uv run python benchmarks/bench_forward.py {{.CLI_ARGS}}"]
 
+  gpu:bench:tutorials:
+    desc: "[GPU host] Run every tutorial benchmark in benchmarks/tutorials/"
+    cmds:
+      - for: { var: BENCHES }
+        cmd: uv run python {{.ITEM}}
+    vars:
+      BENCHES:
+        sh: ls benchmarks/*bench_*.py
+
   # ---------- Housekeeping ----------
 
   clean:
