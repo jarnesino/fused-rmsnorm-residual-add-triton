@@ -5,7 +5,10 @@ import pytest
 import torch
 from transformers.models.llama.modeling_llama import LlamaRMSNorm
 
-from fused_rmsnorm_residual_add.reference import functional_on_eager_torch, hugging_face_llama_style
+from fused_rmsnorm_residual_add.reference import (
+    FunctionalOnEagerTorchImplementation,
+    HuggingFaceLlamaStyleImplementation,
+)
 
 
 @dataclass(frozen=True)
@@ -62,21 +65,20 @@ rmsnorm_residual_add_test_cases = pytest.mark.parametrize(
 
 @rmsnorm_residual_add_test_cases
 def test_functional_rmsnorm_residual_add(test_case, device):
-    _test_rmsnorm_residual_add(functional_on_eager_torch, test_case, device)
+    _test_rmsnorm_residual_add(FunctionalOnEagerTorchImplementation, test_case, device)
 
 
 @rmsnorm_residual_add_test_cases
 def test_llama_style_rmsnorm_residual_add(test_case, device):
-    _test_rmsnorm_residual_add(hugging_face_llama_style, test_case, device)
+    _test_rmsnorm_residual_add(HuggingFaceLlamaStyleImplementation, test_case, device)
 
 
 @rmsnorm_residual_add_test_cases
 def test_llama_style_port_is_bit_identical_to_the_original_implementation(test_case, device):
     x, residual, weight = test_case.inputs_on(device)
 
-    normalized_output, residual_output = hugging_face_llama_style(
-        x, residual, weight, test_case.variance_epsilon
-    )
+    operation = HuggingFaceLlamaStyleImplementation(weight, test_case.variance_epsilon)
+    output = operation.forward(x, residual)
 
     original_norm = LlamaRMSNorm(test_case.columns, eps=test_case.variance_epsilon).to(
         device=device, dtype=test_case.data_type
@@ -85,23 +87,26 @@ def test_llama_style_port_is_bit_identical_to_the_original_implementation(test_c
         original_norm.weight.copy_(weight)
         expected_residual_output = residual + x  # The add method from LlamaDecoderLayer
         expected_normalized_output = original_norm(expected_residual_output)
-    assert torch.equal(residual_output, expected_residual_output)
-    assert torch.equal(normalized_output, expected_normalized_output)
+    assert torch.equal(output.residual, expected_residual_output)
+    assert torch.equal(output.normalized, expected_normalized_output)
 
 
 def _test_rmsnorm_residual_add(implementation, test_case, device):
     variance_epsilon = test_case.variance_epsilon
-    inputs = test_case.inputs_on(device)
-    expected_y, expected_residual_out = _oracle(*inputs, variance_epsilon)
+    x, residual, weight = test_case.inputs_on(device)
+    expected_y, expected_residual_out = _oracle(x, residual, weight, variance_epsilon)
 
-    y, residual_out = implementation(*inputs, variance_epsilon)
+    operation = implementation(weight, variance_epsilon)
+    output = operation.forward(x, residual)
 
     data_type = test_case.data_type
     tolerance = test_case.tolerance
-    assert y.dtype == data_type and residual_out.dtype == data_type
-    torch.testing.assert_close(y.double(), expected_y, atol=tolerance, rtol=tolerance)
+    normalized = output.normalized
+    residual = output.residual
+    assert normalized.dtype == data_type and residual.dtype == data_type
+    torch.testing.assert_close(normalized.double(), expected_y, atol=tolerance, rtol=tolerance)
     torch.testing.assert_close(
-        residual_out.double(), expected_residual_out, atol=tolerance, rtol=tolerance
+        residual.double(), expected_residual_out, atol=tolerance, rtol=tolerance
     )
 
 
