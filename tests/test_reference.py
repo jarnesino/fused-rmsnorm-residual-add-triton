@@ -4,7 +4,7 @@ from itertools import product
 import pytest
 import torch
 
-from fused_rmsnorm_residual_add.reference import functional_on_eager_torch, naive_on_eager_torch
+from fused_rmsnorm_residual_add.reference import functional_on_eager_torch, hugging_face_llama_style
 
 
 @dataclass(frozen=True)
@@ -58,15 +58,15 @@ RMSNORM_RESIDUAL_ADD_TEST_CASES = [
 @pytest.mark.parametrize(
     "test_case", RMSNORM_RESIDUAL_ADD_TEST_CASES, ids=lambda test_case: test_case.id
 )
-def test_naive_rmsnorm_residual_add(test_case, device):
-    _test_rmsnorm_residual_add(naive_on_eager_torch, test_case, device)
+def test_functional_rmsnorm_residual_add(test_case, device):
+    _test_rmsnorm_residual_add(functional_on_eager_torch, test_case, device)
 
 
 @pytest.mark.parametrize(
     "test_case", RMSNORM_RESIDUAL_ADD_TEST_CASES, ids=lambda test_case: test_case.id
 )
-def test_functional_rmsnorm_residual_add(test_case, device):
-    _test_rmsnorm_residual_add(functional_on_eager_torch, test_case, device)
+def test_llama_style_rmsnorm_residual_add(test_case, device):
+    _test_rmsnorm_residual_add(hugging_face_llama_style, test_case, device)
 
 
 def _test_rmsnorm_residual_add(implementation, test_case, device):
