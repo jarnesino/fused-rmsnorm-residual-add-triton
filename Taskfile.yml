@@ -90,7 +90,7 @@ tasks:
         cmd: uv run python {{.ITEM}}
     vars:
       BENCHES:
-        sh: ls benchmarks/*bench_*.py
+        sh: ls benchmarks/tutorials/*bench_*.py
 
   # ---------- Housekeeping ----------
 
