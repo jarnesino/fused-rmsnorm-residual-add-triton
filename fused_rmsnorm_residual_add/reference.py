@@ -14,9 +14,13 @@ def functional_on_eager_torch(x, residual, weight, variance_epsilon):
 def hugging_face_llama_style(x, residual, weight, variance_epsilon):
     """
     Port of Llama residual-add + RMSNorm (same cast order).
-    From huggingface/transformers in src/transformers/models/llama/modeling_llama.py (Apache 2.0):
+    From huggingface/transformers v5.17.0 (Apache 2.0).
+    In src/transformers/models/llama/modeling_llama.py:
         1. LlamaDecoderLayer.forward: hidden_states = residual + hidden_states.
         2. LlamaRMSNorm.forward: upcast to fp32, normalize, cast back, then scale by weight.
+
+    Could have adapted the original implementation with a wrapper, but I wrote this for learning
+        purposes.
     """
     residual_output = residual + x  # From LlamaDecoderLayer
 

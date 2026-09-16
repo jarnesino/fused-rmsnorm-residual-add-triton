@@ -16,7 +16,11 @@ cu128 = ["torch"]    # Colab
 bench = ["pandas", "matplotlib", "liger-kernel"]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff"]
+dev = [
+    "pytest>=8",
+    "ruff",
+    "transformers==5.17.0",
+]
 
 [tool.uv]
 # Lock only for Linux (Triton only has Linux wheels)

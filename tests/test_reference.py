@@ -3,6 +3,7 @@ from itertools import product
 
 import pytest
 import torch
+from transformers.models.llama.modeling_llama import LlamaRMSNorm
 
 from fused_rmsnorm_residual_add.reference import functional_on_eager_torch, hugging_face_llama_style
 
@@ -54,19 +55,38 @@ RMSNORM_RESIDUAL_ADD_TEST_CASES = [
     )
 ]
 
-
-@pytest.mark.parametrize(
+rmsnorm_residual_add_test_cases = pytest.mark.parametrize(
     "test_case", RMSNORM_RESIDUAL_ADD_TEST_CASES, ids=lambda test_case: test_case.id
 )
+
+
+@rmsnorm_residual_add_test_cases
 def test_functional_rmsnorm_residual_add(test_case, device):
     _test_rmsnorm_residual_add(functional_on_eager_torch, test_case, device)
 
 
-@pytest.mark.parametrize(
-    "test_case", RMSNORM_RESIDUAL_ADD_TEST_CASES, ids=lambda test_case: test_case.id
-)
+@rmsnorm_residual_add_test_cases
 def test_llama_style_rmsnorm_residual_add(test_case, device):
     _test_rmsnorm_residual_add(hugging_face_llama_style, test_case, device)
+
+
+@rmsnorm_residual_add_test_cases
+def test_llama_style_port_is_bit_identical_to_the_original_implementation(test_case, device):
+    x, residual, weight = test_case.inputs_on(device)
+
+    normalized_output, residual_output = hugging_face_llama_style(
+        x, residual, weight, test_case.variance_epsilon
+    )
+
+    original_norm = LlamaRMSNorm(test_case.columns, eps=test_case.variance_epsilon).to(
+        device=device, dtype=test_case.data_type
+    )
+    with torch.no_grad():
+        original_norm.weight.copy_(weight)
+        expected_residual_output = residual + x  # The add method from LlamaDecoderLayer
+        expected_normalized_output = original_norm(expected_residual_output)
+    assert torch.equal(residual_output, expected_residual_output)
+    assert torch.equal(normalized_output, expected_normalized_output)
 
 
 def _test_rmsnorm_residual_add(implementation, test_case, device):
