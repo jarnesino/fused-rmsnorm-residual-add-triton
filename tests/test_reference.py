@@ -35,16 +35,22 @@ class RMSNormResidualAddTestCase:
         }
         return tolerance_map[self.data_type]
 
-    def inputs_on(self, device):
-        generator = torch.Generator(device)
-
-        tensor_options = dict(dtype=self.data_type, device=device, generator=generator)
-
-        input_x = torch.randn(self.rows, self.columns, **tensor_options) * self.scale
-        input_residual = torch.randn(self.rows, self.columns, **tensor_options) * self.scale
+    def state_on(self, device):
+        tensor_options = self._tensor_options_on(device)
         input_weight = torch.randn(self.columns, **tensor_options)
 
-        return input_x, input_residual, input_weight
+        return input_weight, self.variance_epsilon
+
+    def inputs_on(self, device):
+        tensor_options = self._tensor_options_on(device)
+        input_x = torch.randn(self.rows, self.columns, **tensor_options) * self.scale
+        input_residual = torch.randn(self.rows, self.columns, **tensor_options) * self.scale
+
+        return input_x, input_residual
+
+    def _tensor_options_on(self, device):
+        generator = torch.Generator(device)
+        return dict(dtype=self.data_type, device=device, generator=generator)
 
 
 RMSNORM_RESIDUAL_ADD_TEST_CASES = [
@@ -75,12 +81,13 @@ def test_llama_style_rmsnorm_residual_add(test_case, device):
 
 @rmsnorm_residual_add_test_cases
 def test_llama_style_port_is_bit_identical_to_the_original_implementation(test_case, device):
-    x, residual, weight = test_case.inputs_on(device)
+    weight, variance_epsilon = test_case.state_on(device)
+    x, residual = test_case.inputs_on(device)
 
-    operation = HuggingFaceLlamaStyleImplementation(weight, test_case.variance_epsilon)
+    operation = HuggingFaceLlamaStyleImplementation(weight, variance_epsilon)
     output = operation.forward(x, residual)
 
-    original_norm = LlamaRMSNorm(test_case.columns, eps=test_case.variance_epsilon).to(
+    original_norm = LlamaRMSNorm(test_case.columns, eps=variance_epsilon).to(
         device=device, dtype=test_case.data_type
     )
     with torch.no_grad():
@@ -92,13 +99,13 @@ def test_llama_style_port_is_bit_identical_to_the_original_implementation(test_c
 
 
 def _test_rmsnorm_residual_add(implementation, test_case, device):
-    variance_epsilon = test_case.variance_epsilon
-    x, residual, weight = test_case.inputs_on(device)
-    expected_y, expected_residual_out = _oracle(x, residual, weight, variance_epsilon)
+    weight, variance_epsilon = test_case.state_on(device)
+    x, residual = test_case.inputs_on(device)
 
     operation = implementation(weight, variance_epsilon)
     output = operation.forward(x, residual)
 
+    expected_y, expected_residual_out = _oracle(x, residual, weight, variance_epsilon)
     data_type = test_case.data_type
     tolerance = test_case.tolerance
     normalized = output.normalized
