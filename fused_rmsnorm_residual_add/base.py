@@ -16,3 +16,7 @@ class BaseRMSNormResidualAdd:
 
     def forward(self, x, residual) -> RMSNormResidualAddOutput:
         raise NotImplementedError()
+
+    @classmethod
+    def supported_data_types_on(cls, device):
+        return {torch.float32, torch.float16, torch.bfloat16}

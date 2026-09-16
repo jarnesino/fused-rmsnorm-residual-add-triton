@@ -6,22 +6,22 @@ from fused_rmsnorm_residual_add.reference import (
     HuggingFaceLlamaStyleImplementation,
 )
 from tests.rmsnorm_residual_add_test_harness import (
-    rmsnorm_residual_add_test_cases,
+    rmsnorm_residual_add_base_test_cases,
     run_rmsnorm_residual_add_test,
 )
 
 
-@rmsnorm_residual_add_test_cases
+@rmsnorm_residual_add_base_test_cases
 def test_functional_rmsnorm_residual_add(test_case, device):
     run_rmsnorm_residual_add_test(FunctionalOnEagerTorchImplementation, test_case, device)
 
 
-@rmsnorm_residual_add_test_cases
+@rmsnorm_residual_add_base_test_cases
 def test_llama_style_rmsnorm_residual_add(test_case, device):
     run_rmsnorm_residual_add_test(HuggingFaceLlamaStyleImplementation, test_case, device)
 
 
-@rmsnorm_residual_add_test_cases
+@rmsnorm_residual_add_base_test_cases
 def test_llama_style_port_is_bit_identical_to_the_original_implementation(test_case, device):
     weight, variance_epsilon = test_case.state_on(device)
     x, residual = test_case.inputs_on(device)
