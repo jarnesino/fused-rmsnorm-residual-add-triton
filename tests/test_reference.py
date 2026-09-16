@@ -4,7 +4,7 @@ from itertools import product
 import pytest
 import torch
 
-from fused_rmsnorm_residual_add.reference import naive_on_eager_torch
+from fused_rmsnorm_residual_add.reference import functional_on_eager_torch, naive_on_eager_torch
 
 
 @dataclass(frozen=True)
@@ -58,12 +58,31 @@ RMSNORM_RESIDUAL_ADD_TEST_CASES = [
 @pytest.mark.parametrize(
     "test_case", RMSNORM_RESIDUAL_ADD_TEST_CASES, ids=lambda test_case: test_case.id
 )
-def test_rmsnorm_residual_add(test_case, device):
+def test_naive_rmsnorm_residual_add(test_case, device):
     variance_epsilon = test_case.variance_epsilon
     inputs = test_case.inputs_on(device)
     expected_y, expected_residual_out = _oracle(*inputs, variance_epsilon)
 
     y, residual_out = naive_on_eager_torch(*inputs, variance_epsilon)
+
+    data_type = test_case.data_type
+    tolerance = test_case.tolerance
+    assert y.dtype == data_type and residual_out.dtype == data_type
+    torch.testing.assert_close(y.double(), expected_y, atol=tolerance, rtol=tolerance)
+    torch.testing.assert_close(
+        residual_out.double(), expected_residual_out, atol=tolerance, rtol=tolerance
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case", RMSNORM_RESIDUAL_ADD_TEST_CASES, ids=lambda test_case: test_case.id
+)
+def test_functional_rmsnorm_residual_add(test_case, device):
+    variance_epsilon = test_case.variance_epsilon
+    inputs = test_case.inputs_on(device)
+    expected_y, expected_residual_out = _oracle(*inputs, variance_epsilon)
+
+    y, residual_out = functional_on_eager_torch(*inputs, variance_epsilon)
 
     data_type = test_case.data_type
     tolerance = test_case.tolerance
