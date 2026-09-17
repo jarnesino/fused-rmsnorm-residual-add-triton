@@ -68,7 +68,8 @@ triton_benchmarks = [
 
 @triton.testing.perf_report(triton_benchmarks)
 def benchmark(number_of_rows, number_of_columns, data_type, provider):
-    tensor_options = dict(device="cuda", dtype=data_type)
+    device = triton.runtime.driver.active.get_active_torch_device()
+    tensor_options = dict(device=device, dtype=data_type)
     x = torch.randn(number_of_rows, number_of_columns, **tensor_options)
     residual = torch.randn(number_of_rows, number_of_columns, **tensor_options)
     weight = torch.randn(number_of_columns, **tensor_options)
@@ -76,7 +77,7 @@ def benchmark(number_of_rows, number_of_columns, data_type, provider):
     implementation_class, calling_policy_class = PROVIDERS[provider]
     operation = implementation_class(weight, VARIANCE_EPSILON)
     if data_type not in operation.supported_data_types_on(x.device):
-        return float("nan")
+        return float("nan"), float("nan"), float("nan")
 
     calling_policy = calling_policy_class()
 
@@ -85,12 +86,23 @@ def benchmark(number_of_rows, number_of_columns, data_type, provider):
     calling_policy.call(operation, x, residual)  # For autotuning and compiling beforehand
     torch.cuda.synchronize()
 
-    milliseconds = triton.testing.do_bench(lambda: calling_policy.call(operation, x, residual))
+    ms, ms_p20, ms_p80 = triton.testing.do_bench(
+        lambda: calling_policy.call(operation, x, residual),
+        warmup=25,
+        rep=200,
+        quantiles=[0.5, 0.2, 0.8],
+    )
     bytes_moved = 4 * x.numel() * x.element_size()
 
-    gigabytes_moved = bytes_moved * 1e-9
-    seconds_elapsed = milliseconds * 1e-3
-    return gigabytes_moved / seconds_elapsed
+    return (
+        _bandwidth_in_gbps(bytes_moved, ms),
+        _bandwidth_in_gbps(bytes_moved, ms_p80),
+        _bandwidth_in_gbps(bytes_moved, ms_p20),
+    )
+
+
+def _bandwidth_in_gbps(bytes_moved, time_in_milliseconds):
+    return bytes_moved * 1e-9 / (time_in_milliseconds * 1e-3)
 
 
 if __name__ == "__main__":
