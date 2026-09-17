@@ -8,6 +8,7 @@ from fused_rmsnorm_residual_add.fused import FusedImplementation
 from fused_rmsnorm_residual_add.reference import (
     CompiledLlamaStyleImplementation,
     FunctionalOnEagerTorchImplementation,
+    LigerImplementation,
     NaiveLlamaStyleImplementation,
 )
 
@@ -39,6 +40,7 @@ class InPlaceCallingPolicy:
 PROVIDERS = {
     "fused": (FusedImplementation, OutOfPlaceCallingPolicy),
     "fused_in_place": (FusedImplementation, InPlaceCallingPolicy),
+    "liger": (LigerImplementation, OutOfPlaceCallingPolicy),
     "naive_llama_style": (NaiveLlamaStyleImplementation, OutOfPlaceCallingPolicy),
     "compiled_llama_style": (CompiledLlamaStyleImplementation, OutOfPlaceCallingPolicy),
     "torch_functional": (FunctionalOnEagerTorchImplementation, OutOfPlaceCallingPolicy),
@@ -68,11 +70,19 @@ def _benchmark_for(swept_name, swept_values, fixed_args, x_log, data_type):
         line_names=[
             "Fused",
             "Fused (in place)",
+            "Liger",
             "Naive Llama style",
             "Compiled Llama style",
             "torch.rms_norm",
         ],
-        styles=[("green", "-"), ("green", "--"), ("blue", "-"), ("blue", "--"), ("red", "-")],
+        styles=[
+            ("green", "-"),
+            ("green", "--"),
+            ("orange", "-"),
+            ("blue", "-"),
+            ("blue", "--"),
+            ("red", "-"),
+        ],
         ylabel="GB/s (median)",
         plot_name=f"forward_{axis}_{short_name}",
         args={**fixed_args, "data_type": data_type},

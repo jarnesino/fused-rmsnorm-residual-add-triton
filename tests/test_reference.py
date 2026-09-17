@@ -4,6 +4,7 @@ from transformers.models.llama.modeling_llama import LlamaRMSNorm
 from fused_rmsnorm_residual_add.reference import (
     CompiledLlamaStyleImplementation,
     FunctionalOnEagerTorchImplementation,
+    LigerImplementation,
     NaiveLlamaStyleImplementation,
 )
 from tests.rmsnorm_residual_add_test_harness import (
@@ -25,6 +26,11 @@ def test_llama_style_rmsnorm_residual_add(test_case, device):
 @rmsnorm_residual_add_base_test_cases
 def test_compiled_llama_style_rmsnorm_residual_add(test_case, device):
     run_rmsnorm_residual_add_test(CompiledLlamaStyleImplementation, test_case, device)
+
+
+@rmsnorm_residual_add_base_test_cases
+def test_liger_rmsnorm_residual_add(test_case, device):
+    run_rmsnorm_residual_add_test(LigerImplementation, test_case, device)
 
 
 @rmsnorm_residual_add_base_test_cases

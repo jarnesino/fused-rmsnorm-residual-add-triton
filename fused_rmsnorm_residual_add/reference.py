@@ -1,3 +1,5 @@
+import importlib.util
+
 import torch
 import torch.nn.functional as functional
 
@@ -70,3 +72,32 @@ class CompiledLlamaStyleImplementation(BaseRMSNormResidualAdd):
         if not torch.cuda.is_bf16_supported(including_emulation=False):
             supported = supported - {torch.bfloat16}  # Inductor refuses bf16 on pre-Ampere GPUs
         return supported
+
+
+_LIGER_IS_AVAILABLE = importlib.util.find_spec("liger_kernel") is not None
+
+
+class LigerImplementation(BaseRMSNormResidualAdd):
+    def __init__(self, weight, variance_epsilon):
+        super().__init__(weight, variance_epsilon)
+        from liger_kernel.transformers import LigerFusedAddRMSNorm
+
+        self._module = LigerFusedAddRMSNorm(
+            hidden_size=weight.numel(),
+            eps=variance_epsilon,
+            offset=0.0,
+            casting_mode="llama",
+        ).to(device=weight.device, dtype=weight.dtype)
+
+        with torch.no_grad():
+            self._module.weight.copy_(weight)
+
+    def forward(self, x, residual):
+        normalized_output, residual_output = self._module(x, residual)
+        return RMSNormResidualAddOutput(normalized_output, residual_output)
+
+    @classmethod
+    def supported_data_types_on(cls, device):
+        if not _LIGER_IS_AVAILABLE or device.type != "cuda":
+            return frozenset()
+        return super().supported_data_types_on(device)
