@@ -44,10 +44,25 @@ PROVIDERS = {
     "torch_functional": (FunctionalOnEagerTorchImplementation, OutOfPlaceCallingPolicy),
 }
 
-triton_benchmarks = [
-    triton.testing.Benchmark(
-        x_names=["number_of_columns"],
-        x_vals=[768, 1024, 2048, 3072, 4096, 5120, 8192, 12288, 16384],
+DATA_TYPES = (torch.bfloat16, torch.float16, torch.float32)
+
+COLUMN_SWEEP = (
+    "number_of_columns",
+    [768, 1024, 2048, 3072, 4096, 5120, 8192, 12288, 16384],
+    {"number_of_rows": 4096},
+    False,
+)
+ROW_SWEEP = ("number_of_rows", [64, 256, 1024, 4096, 16384], {"number_of_columns": 4096}, True)
+
+
+def _benchmark_for(swept_name, swept_values, fixed_args, x_log, data_type):
+    short_name = str(data_type).removeprefix("torch.")
+    axis = "N" if swept_name == "number_of_columns" else "M"
+
+    return triton.testing.Benchmark(
+        x_names=[swept_name],
+        x_vals=swept_values,
+        x_log=x_log,
         line_arg="provider",
         line_vals=list(PROVIDERS),
         line_names=[
@@ -58,11 +73,16 @@ triton_benchmarks = [
             "torch.rms_norm",
         ],
         styles=[("green", "-"), ("green", "--"), ("blue", "-"), ("blue", "--"), ("red", "-")],
-        ylabel="GB/s",
-        plot_name=f"rmsnorm-residual-add-bandwidth-{str(data_type).removeprefix('torch.')}",
-        args={"number_of_rows": 4096, "data_type": data_type},
+        ylabel="GB/s (median)",
+        plot_name=f"forward_{axis}_{short_name}",
+        args={**fixed_args, "data_type": data_type},
     )
-    for data_type in (torch.bfloat16, torch.float16)
+
+
+triton_benchmarks = [
+    _benchmark_for(*sweep, data_type)
+    for sweep in (COLUMN_SWEEP, ROW_SWEEP)
+    for data_type in DATA_TYPES
 ]
 
 
