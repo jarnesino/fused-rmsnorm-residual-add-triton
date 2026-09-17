@@ -1,5 +1,12 @@
+import argparse
+import json
+import subprocess
+import sys
+import time
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+import pandas
 import torch
 import triton
 import triton.testing
@@ -12,7 +19,9 @@ from fused_rmsnorm_residual_add.reference import (
     NaiveLlamaStyleImplementation,
 )
 
-VARIANCE_EPSILON = 1e-6
+BENCH_PARAMS = {"warmup": 25, "rep": 200, "quantiles": [0.5, 0.2, 0.8]}
+
+_measurements = []
 
 
 class OutOfPlaceCallingPolicy:
@@ -95,6 +104,8 @@ triton_benchmarks = [
     for data_type in DATA_TYPES
 ]
 
+VARIANCE_EPSILON = 1e-6
+
 
 @triton.testing.perf_report(triton_benchmarks)
 def benchmark(number_of_rows, number_of_columns, data_type, provider):
@@ -117,25 +128,97 @@ def benchmark(number_of_rows, number_of_columns, data_type, provider):
     torch.cuda.synchronize()
 
     ms, ms_p20, ms_p80 = triton.testing.do_bench(
-        lambda: calling_policy.call(operation, x, residual),
-        warmup=25,
-        rep=200,
-        quantiles=[0.5, 0.2, 0.8],
+        lambda: calling_policy.call(operation, x, residual), **BENCH_PARAMS
     )
+
     bytes_moved = 4 * x.numel() * x.element_size()
 
-    return (
-        _bandwidth_in_gbps(bytes_moved, ms),
-        _bandwidth_in_gbps(bytes_moved, ms_p80),
-        _bandwidth_in_gbps(bytes_moved, ms_p20),
+    gbps_median = _bandwidth_in_gbps(bytes_moved, ms)
+    gbps_p20 = _bandwidth_in_gbps(bytes_moved, ms_p80)
+    gbps_p80 = _bandwidth_in_gbps(bytes_moved, ms_p20)
+
+    _measurements.append(
+        {
+            "data_type": str(data_type).removeprefix("torch."),
+            "number_of_rows": number_of_rows,
+            "number_of_columns": number_of_columns,
+            "provider": provider,
+            "milliseconds_median": ms,
+            "milliseconds_p20": ms_p20,
+            "milliseconds_p80": ms_p80,
+            "bytes_moved": bytes_moved,
+            "gbps_median": gbps_median,
+            "gbps_p20": gbps_p20,
+            "gbps_p80": gbps_p80,
+        }
     )
+
+    return gbps_median, gbps_p20, gbps_p80
 
 
 def _bandwidth_in_gbps(bytes_moved, time_in_milliseconds):
     return bytes_moved * 1e-9 / (time_in_milliseconds * 1e-3)
 
 
+def _shell(*command):
+    result = subprocess.run(command, capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _liger_version():
+    try:
+        return version("liger-kernel")
+    except PackageNotFoundError:
+        return None
+
+
+def _gpu_slug(device):
+    return torch.cuda.get_device_name(device).lower().replace(" ", "-").replace("/", "-")
+
+
+def _metadata(device, clocks_locked, run_index):
+    return {
+        "gpu": torch.cuda.get_device_name(device),
+        "capability": list(torch.cuda.get_device_capability(device)),
+        "driver": _shell("nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"),
+        "cuda": torch.version.cuda,
+        "torch": torch.__version__,
+        "triton": triton.__version__,
+        "liger": _liger_version(),
+        "python": sys.version.split()[0],
+        "git_sha": _shell("git", "rev-parse", "HEAD"),
+        "git_is_dirty": bool(_shell("git", "status", "--porcelain")),
+        "do_bench": BENCH_PARAMS,
+        "clocks_locked": clocks_locked,
+        "seed": 0,
+        "run_index": run_index,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+
+
+def _write_run(directory, device, clocks_locked, run_index):
+    metadata = _metadata(device, clocks_locked, run_index)
+    (directory / "meta.json").write_text(json.dumps(metadata, indent=2))
+    (directory / "env.txt").write_text(_shell(sys.executable, "-m", "pip", "freeze") or "")
+    pandas.DataFrame(_measurements).to_csv(directory / "measurements.csv", index=False)
+
+
 if __name__ == "__main__":
-    results = Path("benchmarks/results/rmsnorm_residual_add")
-    results.mkdir(parents=True, exist_ok=True)
-    benchmark.run(print_data=True, save_path=str(results))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument("--clocks-locked", action="store_true")
+    parser.add_argument("--results", type=Path, default=Path(__file__).parent / "results")
+    arguments = parser.parse_args()
+
+    device = triton.runtime.driver.active.get_active_torch_device()
+    base_directory = arguments.results / _gpu_slug(device)
+
+    for run_index in range(arguments.runs):
+        torch.manual_seed(0)
+        _measurements.clear()
+
+        run_directory = base_directory / time.strftime("%Y%m%dT%H%M%S")
+        run_directory.mkdir(parents=True, exist_ok=True)
+
+        benchmark.run(print_data=True, save_path=str(run_directory))
+        _write_run(run_directory, device, arguments.clocks_locked, run_index)
