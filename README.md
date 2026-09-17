@@ -14,24 +14,25 @@ A Triton GPU kernel project that fuses the residual-add and RMSNorm steps used a
 
 ## Commands
 
-| Command             | Where it runs     | What it does                                                                              |
-|---------------------|-------------------|-------------------------------------------------------------------------------------------|
-| `task`              | Local             | List all tasks                                                                            |
-| `task setup`        | Local + container | First-time install (build image, resolve lock, install CPU dependencies)                  |
-| `task build`        | Local             | Rebuild the Docker image (only needed after editing the Dockerfile)                       |
-| `task lock`         | Container         | Resolve dependency versions into `uv.lock`                                                |
-| `task sync`         | Container         | Install dependencies from `uv.lock` into the virtual environment volume (CPU torch)       |
-| `task add -- <pkg>` | Container         | Add a dependency to `pyproject.toml`, then re-lock and re-sync                            |
-| `task shell`        | Container         | Open an interactive bash session                                                          |
-| `task py`           | Container         | Open a Python REPL with the project installed                                             |
-| `task lint`         | Container         | Run ruff check and ruff format in check mode, reports problems without changing files     |
-| `task fmt`          | Container         | Run ruff with autofix and reformat files in place                                         |
-| `task test`         | Container         | Run the CPU test suite under `TRITON_INTERPRET=1` (same command as CI)                    |
-| `task check`        | Container         | Run lint then test (same command as the pre-commit hook)                                  |
-| `task gpu:sync`     | GPU host          | Installs CUDA torch plus bench extras. Run natively on Colab or a GPU box, not via Docker |
-| `task gpu:test`     | GPU host          | Run the full test matrix including gpu-marked tests                                       |
-| `task gpu:bench`    | GPU host          | Run the benchmark                                                                         |
-| `task clean`        | Local             | Remove containers and venv/cache volumes (full reset)                                     |
+| Command                    | Where it runs     | What it does                                                                              |
+|----------------------------|-------------------|-------------------------------------------------------------------------------------------|
+| `task`                     | Local             | List all tasks                                                                            |
+| `task setup`               | Local + container | First-time install (build image, resolve lock, install CPU dependencies)                  |
+| `task build`               | Local             | Rebuild the Docker image (only needed after editing the Dockerfile)                       |
+| `task lock`                | Container         | Resolve dependency versions into `uv.lock`                                                |
+| `task sync`                | Container         | Install dependencies from `uv.lock` into the virtual environment volume (CPU torch)       |
+| `task add -- <pkg>`        | Container         | Add a dependency to `pyproject.toml`, then re-lock and re-sync                            |
+| `task shell`               | Container         | Open an interactive bash session                                                          |
+| `task py`                  | Container         | Open a Python REPL with the project installed                                             |
+| `task lint`                | Container         | Run ruff check and ruff format in check mode, reports problems without changing files     |
+| `task fmt`                 | Container         | Run ruff with autofix and reformat files in place                                         |
+| `task test`                | Container         | Run the CPU test suite under `TRITON_INTERPRET=1` (same command as CI)                    |
+| `task check`               | Container         | Run lint then test (same command as the pre-commit hook)                                  |
+| `task gpu:sync`            | GPU host          | Installs CUDA torch plus bench extras. Run natively on Colab or a GPU box, not via Docker |
+| `task gpu:test`            | GPU host          | Run the full test matrix including gpu-marked tests                                       |
+| `task gpu:bench`           | GPU host          | Run the benchmark for the main operation                                                  |
+| `task gpu:bench:tutorials` | GPU host          | Run the benchmark for the tutorials                                                       |
+| `task clean`               | Local             | Remove containers and venv/cache volumes (full reset)                                     |
 
 ## Notes
 
