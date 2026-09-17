@@ -73,12 +73,13 @@ def benchmark(number_of_rows, number_of_columns, data_type, provider):
     residual = torch.randn(number_of_rows, number_of_columns, **tensor_options)
     weight = torch.randn(number_of_columns, **tensor_options)
 
-    implementation, calling_policy_class = PROVIDERS[provider]
-    operation = implementation(weight, VARIANCE_EPSILON)
+    implementation_class, calling_policy_class = PROVIDERS[provider]
+    operation = implementation_class(weight, VARIANCE_EPSILON)
+    if data_type not in operation.supported_data_types_on(x.device):
+        return float("nan")
+
     calling_policy = calling_policy_class()
     milliseconds = triton.testing.do_bench(lambda: calling_policy.call(operation, x, residual))
-
-    # Two reads (x, residual), two writes (normalized_output and residual_output), weight is ignored
     bytes_moved = 4 * x.numel() * x.element_size()
 
     gigabytes_moved = bytes_moved * 1e-9
@@ -87,6 +88,8 @@ def benchmark(number_of_rows, number_of_columns, data_type, provider):
 
 
 if __name__ == "__main__":
+    torch._dynamo.reset()
+
     results = Path("benchmarks/results/rmsnorm_residual_add")
     results.mkdir(parents=True, exist_ok=True)
     benchmark.run(print_data=True, save_path=str(results))
