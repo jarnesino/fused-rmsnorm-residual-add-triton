@@ -16,7 +16,7 @@ class FunctionalOnEagerTorchImplementation(BaseRMSNormResidualAdd):
         return RMSNormResidualAddOutput(normalized_output, residual_output)
 
 
-class HuggingFaceLlamaStyleImplementation(BaseRMSNormResidualAdd):
+class NaiveLlamaStyleImplementation(BaseRMSNormResidualAdd):
     """
     Port of Llama residual-add + RMSNorm (same cast order).
     From huggingface/transformers v5.17.0 (Apache 2.0).

@@ -7,7 +7,7 @@ import triton.testing
 from fused_rmsnorm_residual_add.fused import FusedImplementation
 from fused_rmsnorm_residual_add.reference import (
     FunctionalOnEagerTorchImplementation,
-    HuggingFaceLlamaStyleImplementation,
+    NaiveLlamaStyleImplementation,
 )
 
 VARIANCE_EPSILON = 1e-6
@@ -38,7 +38,7 @@ class InPlaceCallingPolicy:
 PROVIDERS = {
     "fused": (FusedImplementation, OutOfPlaceCallingPolicy),
     "fused_in_place": (FusedImplementation, InPlaceCallingPolicy),
-    "hf_llama_style": (HuggingFaceLlamaStyleImplementation, OutOfPlaceCallingPolicy),
+    "naive_llama_style": (NaiveLlamaStyleImplementation, OutOfPlaceCallingPolicy),
     "torch_functional": (FunctionalOnEagerTorchImplementation, OutOfPlaceCallingPolicy),
 }
 
@@ -48,7 +48,7 @@ triton_benchmarks = [
         x_vals=[768, 1024, 2048, 3072, 4096, 5120, 8192, 12288, 16384],
         line_arg="provider",
         line_vals=list(PROVIDERS),
-        line_names=["Fused", "Fused (in place)", "Llama style", "torch.rms_norm"],
+        line_names=["Fused", "Fused (in place)", "Naive Llama style", "torch.rms_norm"],
         styles=[("green", "-"), ("green", "--"), ("blue", "-"), ("red", "-")],
         ylabel="GB/s",
         plot_name=f"rmsnorm-residual-add-bandwidth-{str(data_type).removeprefix('torch.')}",

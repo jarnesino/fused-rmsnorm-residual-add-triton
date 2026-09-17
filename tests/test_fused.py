@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from fused_rmsnorm_residual_add.fused import FusedImplementation
-from fused_rmsnorm_residual_add.reference import HuggingFaceLlamaStyleImplementation
+from fused_rmsnorm_residual_add.reference import NaiveLlamaStyleImplementation
 from tests.rmsnorm_residual_add_test_harness import (
     RMSNormResidualAddTestCase,
     oracle,
@@ -31,7 +31,7 @@ def test_fused_rmsnorm_residual_add_on_gpu_cases_is_similarly_accurate_to_llama(
 
     fused_output = FusedImplementation(weight, variance_epsilon).forward(x, residual)
 
-    port_output = HuggingFaceLlamaStyleImplementation(weight, variance_epsilon).forward(x, residual)
+    port_output = NaiveLlamaStyleImplementation(weight, variance_epsilon).forward(x, residual)
     expected_normalized_output, _ = oracle(x, residual, weight, variance_epsilon)
     fused_error = (fused_output.normalized.double() - expected_normalized_output).abs().max()
     port_error = (port_output.normalized.double() - expected_normalized_output).abs().max()

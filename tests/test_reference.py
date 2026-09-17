@@ -3,7 +3,7 @@ from transformers.models.llama.modeling_llama import LlamaRMSNorm
 
 from fused_rmsnorm_residual_add.reference import (
     FunctionalOnEagerTorchImplementation,
-    HuggingFaceLlamaStyleImplementation,
+    NaiveLlamaStyleImplementation,
 )
 from tests.rmsnorm_residual_add_test_harness import (
     rmsnorm_residual_add_base_test_cases,
@@ -18,7 +18,7 @@ def test_functional_rmsnorm_residual_add(test_case, device):
 
 @rmsnorm_residual_add_base_test_cases
 def test_llama_style_rmsnorm_residual_add(test_case, device):
-    run_rmsnorm_residual_add_test(HuggingFaceLlamaStyleImplementation, test_case, device)
+    run_rmsnorm_residual_add_test(NaiveLlamaStyleImplementation, test_case, device)
 
 
 @rmsnorm_residual_add_base_test_cases
@@ -26,7 +26,7 @@ def test_llama_style_port_is_bit_identical_to_the_original_implementation(test_c
     weight, variance_epsilon = test_case.state_on(device)
     x, residual = test_case.inputs_on(device)
 
-    operation = HuggingFaceLlamaStyleImplementation(weight, variance_epsilon)
+    operation = NaiveLlamaStyleImplementation(weight, variance_epsilon)
     output = operation.forward(x, residual)
 
     original_norm = LlamaRMSNorm(test_case.columns, eps=variance_epsilon).to(
