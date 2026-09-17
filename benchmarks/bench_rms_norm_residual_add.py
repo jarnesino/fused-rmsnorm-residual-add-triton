@@ -79,6 +79,12 @@ def benchmark(number_of_rows, number_of_columns, data_type, provider):
         return float("nan")
 
     calling_policy = calling_policy_class()
+
+    if provider == "compiled_llama_style":
+        torch._dynamo.reset()
+    calling_policy.call(operation, x, residual)  # For autotuning and compiling beforehand
+    torch.cuda.synchronize()
+
     milliseconds = triton.testing.do_bench(lambda: calling_policy.call(operation, x, residual))
     bytes_moved = 4 * x.numel() * x.element_size()
 
@@ -88,8 +94,6 @@ def benchmark(number_of_rows, number_of_columns, data_type, provider):
 
 
 if __name__ == "__main__":
-    torch._dynamo.reset()
-
     results = Path("benchmarks/results/rmsnorm_residual_add")
     results.mkdir(parents=True, exist_ok=True)
     benchmark.run(print_data=True, save_path=str(results))
