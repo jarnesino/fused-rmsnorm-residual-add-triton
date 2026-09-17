@@ -29,13 +29,41 @@ class NaiveLlamaStyleImplementation(BaseRMSNormResidualAdd):
     """
 
     def forward(self, x, residual):
-        residual_output = residual + x  # From LlamaDecoderLayer
+        return _llama_style_rmsnorm_residual_add(x, residual, self._weight, self._variance_epsilon)
 
-        # From LlamaRMSNorm
-        input_data_type = residual_output.dtype
-        hidden_states = residual_output.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self._variance_epsilon)
-        normalized_output = self._weight * hidden_states.to(input_data_type)
 
-        return RMSNormResidualAddOutput(normalized_output, residual_output)
+def _llama_style_rmsnorm_residual_add(x, residual, weight, variance_epsilon):
+    """The Llama-style body as a free function, so torch.compile can trace it into one graph."""
+    residual_output = residual + x  # From LlamaDecoderLayer
+
+    # From LlamaRMSNorm
+    input_data_type = residual_output.dtype
+    hidden_states = residual_output.to(torch.float32)
+    variance = hidden_states.pow(2).mean(-1, keepdim=True)
+    hidden_states = hidden_states * torch.rsqrt(variance + variance_epsilon)
+    normalized_output = weight * hidden_states.to(input_data_type)
+
+    return RMSNormResidualAddOutput(normalized_output, residual_output)
+
+
+_compiled_llama_style_rmsnorm_residual_add = torch.compile(_llama_style_rmsnorm_residual_add)
+
+
+class CompiledLlamaStyleImplementation(BaseRMSNormResidualAdd):
+    """
+    The Llama-style reference under torch.compile. Inductor fuses what it can.
+    Compiled once per process.
+    """
+
+    def forward(self, x, residual):
+        return _compiled_llama_style_rmsnorm_residual_add(
+            x, residual, self._weight, self._variance_epsilon
+        )
+
+    @classmethod
+    def supported_data_types_on(cls, device):
+        # Inductor's CPU backend needs a C++ compiler that I don't want to put in the container
+        if device.type == "cpu":
+            return frozenset()
+
+        return super().supported_data_types_on(device)

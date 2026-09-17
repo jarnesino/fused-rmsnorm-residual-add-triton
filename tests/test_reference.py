@@ -2,6 +2,7 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaRMSNorm
 
 from fused_rmsnorm_residual_add.reference import (
+    CompiledLlamaStyleImplementation,
     FunctionalOnEagerTorchImplementation,
     NaiveLlamaStyleImplementation,
 )
@@ -19,6 +20,11 @@ def test_functional_rmsnorm_residual_add(test_case, device):
 @rmsnorm_residual_add_base_test_cases
 def test_llama_style_rmsnorm_residual_add(test_case, device):
     run_rmsnorm_residual_add_test(NaiveLlamaStyleImplementation, test_case, device)
+
+
+@rmsnorm_residual_add_base_test_cases
+def test_compiled_llama_style_rmsnorm_residual_add(test_case, device):
+    run_rmsnorm_residual_add_test(CompiledLlamaStyleImplementation, test_case, device)
 
 
 @rmsnorm_residual_add_base_test_cases
