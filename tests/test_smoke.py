@@ -17,7 +17,7 @@ def _add_kernel(X, Y, Z, N, grid, block_size):
 def _add_kernel_using_constant_block_size(
     x_ptr, y_ptr, output_ptr, number_of_elements, block_size: tl.constexpr
 ):
-    pid = tl.program_id(0)
+    pid = tl.program_id(0).to(tl.int64)
     offset = pid * block_size + tl.arange(0, block_size)
     mask = offset < number_of_elements
 
