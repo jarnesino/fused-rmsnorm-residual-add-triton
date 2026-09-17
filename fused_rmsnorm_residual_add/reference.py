@@ -66,4 +66,7 @@ class CompiledLlamaStyleImplementation(BaseRMSNormResidualAdd):
         if device.type == "cpu":
             return frozenset()
 
-        return super().supported_data_types_on(device)
+        supported = super().supported_data_types_on(device)
+        if not torch.cuda.is_bf16_supported(including_emulation=False):
+            supported = supported - {torch.bfloat16}  # Inductor refuses bf16 on pre-Ampere GPUs
+        return supported
