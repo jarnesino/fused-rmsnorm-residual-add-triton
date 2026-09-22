@@ -203,14 +203,24 @@ def _write_run(directory, device, clocks_locked, run_index):
     pandas.DataFrame(_measurements).to_csv(directory / "measurements.csv", index=False)
 
 
-if __name__ == "__main__":
+def _arguments():
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--clocks-locked", action="store_true")
     parser.add_argument("--results", type=Path, default=Path(__file__).parent / "results")
-    arguments = parser.parse_args()
 
-    device = triton.runtime.driver.active.get_active_torch_device()
+    return parser.parse_args()
+
+
+def _device():
+    return triton.runtime.driver.active.get_active_torch_device()
+
+
+if __name__ == "__main__":
+    arguments = _arguments()
+    device = _device()
+
     base_directory = arguments.results / _gpu_slug(device)
 
     for run_index in range(arguments.runs):
