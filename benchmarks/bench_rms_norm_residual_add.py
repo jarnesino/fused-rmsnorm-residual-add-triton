@@ -11,7 +11,7 @@ import torch
 import triton
 import triton.testing
 
-from fused_rmsnorm_residual_add.fused import FusedImplementation
+from fused_rmsnorm_residual_add.fused import FusedImplementation, fused_rmsnorm_residual_add_kernel
 from fused_rmsnorm_residual_add.reference import (
     CompiledLlamaStyleImplementation,
     FunctionalOnEagerTorchImplementation,
@@ -190,7 +190,11 @@ def _metadata(device, clocks_locked, run_index):
         "git_is_dirty": _git_is_dirty(),
         "do_bench": BENCH_PARAMS,
         "clocks_locked": clocks_locked,
-        "seed": 0,
+        "autotuned_num_warps_on_fused": {
+            f"N={key[0]} {key[1]}": config.num_warps
+            for key, config in fused_rmsnorm_residual_add_kernel.cache.items()
+        },
+        "seed": _torch_seed(),
         "run_index": run_index,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
@@ -229,6 +233,10 @@ def _device():
     return triton.runtime.driver.active.get_active_torch_device()
 
 
+def _torch_seed():
+    return 0
+
+
 if __name__ == "__main__":
     arguments = _arguments()
     device = _device()
@@ -236,7 +244,8 @@ if __name__ == "__main__":
     base_directory = arguments.results / _gpu_slug(device)
 
     for run_index in range(arguments.runs):
-        torch.manual_seed(0)
+        FusedImplementation.clear_kernel_cache()
+        torch.manual_seed(_torch_seed())
         _measurements.clear()
 
         run_directory = base_directory / time.strftime("%Y%m%dT%H%M%S")

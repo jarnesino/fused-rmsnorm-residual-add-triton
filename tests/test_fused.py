@@ -136,3 +136,16 @@ def test_rejects_weight_if_it_is_non_contiguous(device):
 
     with pytest.raises(ValueError, match="Tensor must have a contiguous last dimension."):
         FusedImplementation(column_strided_weight, variance_epsilon)
+
+
+@pytest.mark.gpu
+def test_keeps_in_place_residual_correct_on_first_autotuned_call(device):
+    FusedImplementation.clear_kernel_cache()  # Force tuning
+    operation, x, residual = _fused_operation_and_small_inputs_on(device)
+    original_residual = residual.clone()
+
+    output = operation.forward(x, residual, residual_output=residual)
+
+    expected_output = operation.forward(x, original_residual)
+    assert torch.equal(output.residual, expected_output.residual)
+    assert torch.equal(output.normalized, expected_output.normalized)

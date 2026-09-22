@@ -1,3 +1,5 @@
+import os
+
 import torch
 import triton
 import triton.language as tl
@@ -27,9 +29,6 @@ class FusedImplementation(BaseRMSNormResidualAdd):
 
         block_size = self._block_size_for(number_of_columns)
 
-        # Heuristic to be optimized
-        number_of_warps = 4 if block_size < 2048 else 8 if block_size < 8192 else 16
-
         normalized_output_2d = (
             torch.empty_like(x_2d)
             if normalized_output is None
@@ -55,7 +54,6 @@ class FusedImplementation(BaseRMSNormResidualAdd):
             number_of_columns,
             self._variance_epsilon,
             block_size=tl.constexpr(block_size),
-            num_warps=number_of_warps,
         )
 
         normalized_output = normalized_output_2d.view(original_shape)
@@ -71,6 +69,10 @@ class FusedImplementation(BaseRMSNormResidualAdd):
             return base_supported_data_types - {torch.bfloat16}
         return base_supported_data_types
 
+    @classmethod
+    def clear_kernel_cache(cls):
+        fused_rmsnorm_residual_add_kernel.cache.clear()
+
     @staticmethod
     def _assert_last_dimensions_are_contiguous(tensors):
         for tensor in tensors:
@@ -82,18 +84,44 @@ class FusedImplementation(BaseRMSNormResidualAdd):
         if weight.dtype != x.dtype:
             raise ValueError("Weight must have the same datatype as input x.")
 
-    def _block_size_for(self, number_of_columns):
+    @classmethod
+    def _block_size_for(cls, number_of_columns):
         block_size = triton.next_power_of_2(number_of_columns)
-        if block_size > self._block_size_limit():
+        if block_size > cls._block_size_limit():
             message = f"A row of {number_of_columns} columns is too wide for a single-block kernel."
             raise ValueError(message)
         return block_size
 
-    @staticmethod
-    def _block_size_limit() -> int:
+    @classmethod
+    def _block_size_limit(cls):
         return 65536
 
 
+_WARP_CHOICES = (1, 2, 4, 8, 16, 32)
+
+
+def _autotune_configurations():
+    if os.environ.get("TRITON_INTERPRET") == "1":
+        return [triton.Config({}, num_warps=4)]
+
+    return [triton.Config({}, num_warps=w) for w in _WARP_CHOICES]
+
+
+def _prune_by_elements_per_thread(configs, named_args, **kwargs):
+    block_size = FusedImplementation._block_size_for(named_args["number_of_columns"])
+
+    kept = [c for c in configs if 1 <= block_size // (32 * c.num_warps) <= 64]
+    if len(kept) == 0:
+        return configs
+    return kept
+
+
+@triton.autotune(
+    configs=_autotune_configurations(),
+    key=["number_of_columns"],
+    prune_configs_by={"early_config_prune": _prune_by_elements_per_thread},
+    restore_value=["residual_ptr"],  # In-place aliasing messes with autotune's multiple runs
+)
 @triton.jit
 def fused_rmsnorm_residual_add_kernel(
     x_ptr,
