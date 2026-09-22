@@ -179,21 +179,33 @@ def _gpu_slug(device):
 def _metadata(device, clocks_locked, run_index):
     return {
         "gpu": torch.cuda.get_device_name(device),
-        "capability": list(torch.cuda.get_device_capability(device)),
-        "driver": _shell("nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"),
+        "capability": _capability(device),
+        "driver": _driver(),
         "cuda": torch.version.cuda,
         "torch": torch.__version__,
         "triton": triton.__version__,
         "liger": _liger_version(),
         "python": sys.version.split()[0],
         "git_sha": _shell("git", "rev-parse", "HEAD"),
-        "git_is_dirty": bool(_shell("git", "status", "--porcelain")),
+        "git_is_dirty": _git_is_dirty(),
         "do_bench": BENCH_PARAMS,
         "clocks_locked": clocks_locked,
         "seed": 0,
         "run_index": run_index,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
+
+
+def _capability(cuda_device):
+    return list(torch.cuda.get_device_capability(cuda_device))
+
+
+def _driver():
+    return _shell("nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader")
+
+
+def _git_is_dirty():
+    return bool(_shell("git", "status", "--porcelain", "--", ".", ":!benchmarks/results"))
 
 
 def _write_run(directory, device, clocks_locked, run_index):
