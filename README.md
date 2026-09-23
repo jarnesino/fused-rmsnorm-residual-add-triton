@@ -49,6 +49,22 @@ memory system from running optimally. This project was done testing with NVIDIA 
 
 Each optimization is in its own commit, with the benchmark run before and after.
 
+Here is where the kernel ends up as, measured on a T4 in fp16.
+
+![Bandwidth against row width, 4096 rows, fp16, Tesla T4](benchmarks/results/tesla-t4/20260923T035504/forward_N_float16.png)
+
+Higher is better, and the numbers are effective bandwidth, meaning the bytes the operation has to move (logically) 
+divided by the time it took. Every implementation is credited with the same byte count, so a fused kernel that makes
+fewer passes over memory shows up as a higher number for the same work. A T4 tops out around 320 GB per second.
+
+![Bandwidth against row count, row width 4096, fp16, Tesla T4](benchmarks/results/tesla-t4/20260923T035504/forward_M_float16.png)
+
+The second sweep fixes the row width and varies how many rows there are. The curve climbing on the left is the GPU not 
+being full yet, where the time is mostly the cost of starting the kernel rather than moving data. Once there is enough 
+work to go around, everything flattens out against the memory ceiling.
+
+
+
 ### 1. Letting Triton pick the warp count
 _Implementation SHA `d72ba3e4eb1f8faae330c839926188e02212998e`_
 _Results SHA `15dcd7c1600756a94fe0d192a81916f9e8ced6bf`_
