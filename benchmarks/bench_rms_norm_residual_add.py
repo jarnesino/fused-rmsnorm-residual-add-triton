@@ -190,9 +190,12 @@ def _metadata(device, clocks_locked, run_index):
         "git_is_dirty": _git_is_dirty(),
         "do_bench": BENCH_PARAMS,
         "clocks_locked": clocks_locked,
-        "autotuned_num_warps_on_fused": {
-            f"N={key[0]} {key[1]}": config.num_warps
-            for key, config in fused_rmsnorm_residual_add_kernel.cache.items()
+        "autotuned_configurations": {
+            f"N={key[0]} {key[1]}": {
+                "num_warps": configuration.num_warps,
+                "programs_per_sm": configuration.kwargs["programs_per_sm"],
+            }
+            for key, configuration in fused_rmsnorm_residual_add_kernel.cache.items()
         },
         "seed": _torch_seed(),
         "run_index": run_index,

@@ -1,3 +1,4 @@
+import functools
 import os
 
 import torch
@@ -40,8 +41,9 @@ class FusedImplementation(BaseRMSNormResidualAdd):
             else residual_output.view(-1, number_of_columns)
         )
 
-        grid = (number_of_rows,)
-        fused_rmsnorm_residual_add_kernel[grid](
+        grid_function = self._grid_function_from(x, number_of_rows)
+
+        fused_rmsnorm_residual_add_kernel[grid_function](
             x_2d,
             residual_2d,
             self._weight,
@@ -51,6 +53,7 @@ class FusedImplementation(BaseRMSNormResidualAdd):
             residual_2d.stride(0),
             normalized_output_2d.stride(0),
             residual_output_2d.stride(0),
+            number_of_rows,
             number_of_columns,
             self._variance_epsilon,
             block_size=tl.constexpr(block_size),
@@ -60,6 +63,23 @@ class FusedImplementation(BaseRMSNormResidualAdd):
         residual_output = residual_output_2d.view(original_shape)
 
         return RMSNormResidualAddOutput(normalized_output, residual_output)
+
+    def _grid_function_from(self, x, number_of_rows):
+        number_of_sms = self._number_of_sms(x.device)
+
+        def grid_function(meta):
+            if meta["programs_per_sm"] == 0:
+                return (number_of_rows,)
+            return (min(number_of_rows, number_of_sms * meta["programs_per_sm"]),)
+
+        return grid_function
+
+    @staticmethod
+    @functools.cache
+    def _number_of_sms(device):
+        if device.type == "cpu":
+            return 4
+        return torch.cuda.get_device_properties(device).multi_processor_count
 
     @classmethod
     def supported_data_types_on(cls, device):
@@ -97,23 +117,45 @@ class FusedImplementation(BaseRMSNormResidualAdd):
         return 65536
 
 
+_PROGRAMS_PER_SM_CHOICES = (0, 1, 2, 4, 8, 16)  # Non-persistent loops use 0 (one program per row)
 _WARP_CHOICES = (1, 2, 4, 8, 16, 32)
 
 
 def _autotune_configurations():
     if os.environ.get("TRITON_INTERPRET") == "1":
-        return [triton.Config({}, num_warps=4)]
+        return [triton.Config({"programs_per_sm": 1}, num_warps=4, num_stages=1)]
 
-    return [triton.Config({}, num_warps=w) for w in _WARP_CHOICES]
+    return [
+        triton.Config({"programs_per_sm": p}, num_warps=w, num_stages=1)
+        for w in _WARP_CHOICES
+        for p in _PROGRAMS_PER_SM_CHOICES
+    ]
 
 
 def _prune_by_elements_per_thread(configs, named_args, **kwargs):
     block_size = FusedImplementation._block_size_for(named_args["number_of_columns"])
 
-    kept = [c for c in configs if 1 <= block_size // (32 * c.num_warps) <= 64]
+    properties = torch.cuda.get_device_properties(named_args["x_ptr"].device)
+    max_warps_per_sm = properties.max_threads_per_multi_processor // 32
+
+    kept = [
+        configuration
+        for configuration in configs
+        if _is_worth_benchmarking(configuration, block_size, max_warps_per_sm)
+    ]
     if len(kept) == 0:
         return configs
     return kept
+
+
+def _is_worth_benchmarking(configuration, block_size, max_warps_per_sm):
+    has_a_sane_working_set = 1 <= block_size // (32 * configuration.num_warps) <= 64
+    fits_on_one_streaming_multiprocessor = (
+        configuration.kwargs["programs_per_sm"] == 0
+        or configuration.num_warps * configuration.kwargs["programs_per_sm"] <= max_warps_per_sm
+    )
+
+    return has_a_sane_working_set and fits_on_one_streaming_multiprocessor
 
 
 @triton.autotune(
@@ -133,33 +175,40 @@ def fused_rmsnorm_residual_add_kernel(
     residual_stride,
     normalized_output_stride,
     residual_output_stride,  # row strides; last dim is contiguous
+    number_of_rows,
     number_of_columns,
     variance_epsilon,
     block_size: tl.constexpr,
+    programs_per_sm: tl.constexpr,  # Not used here, needed to autotune the grid size
 ):
-    row = tl.program_id(0)
     columns = tl.arange(0, block_size)
     mask = columns < number_of_columns
-
-    x = tl.load(x_ptr + row * x_stride + columns, mask=mask, other=0.0)
-    residual = tl.load(residual_ptr + row * residual_stride + columns, mask=mask, other=0.0)
-
-    residual_output = residual + x  # One rounding in the model dtype like LlamaDecoderLayer
-    tl.store(
-        residual_output_ptr + row * residual_output_stride + columns, residual_output, mask=mask
-    )
-
-    hidden_states = residual_output.to(tl.float32)  # Upcast rounded value like LlamaRMSNorm
-
-    variance = tl.sum(hidden_states * hidden_states, axis=0) / number_of_columns
-    inverse_rms = tl.rsqrt(variance + variance_epsilon)
-
     weight = tl.load(weight_ptr + columns, mask=mask, other=0.0)
-    normalized_output = (hidden_states * inverse_rms).to(
-        normalized_output_ptr.dtype.element_ty
-    ) * weight
-    tl.store(
-        normalized_output_ptr + row * normalized_output_stride + columns,
-        normalized_output,
-        mask=mask,
-    )
+
+    # Using a for loop causes a NumPy 2 incompatibility
+    row = tl.program_id(0).to(tl.int64)
+    row_step = tl.num_programs(0)
+    while row < number_of_rows:
+        x = tl.load(x_ptr + row * x_stride + columns, mask=mask, other=0.0)
+        residual = tl.load(residual_ptr + row * residual_stride + columns, mask=mask, other=0.0)
+
+        residual_output = residual + x  # One rounding in the model dtype like LlamaDecoderLayer
+        tl.store(
+            residual_output_ptr + row * residual_output_stride + columns, residual_output, mask=mask
+        )
+
+        hidden_states = residual_output.to(tl.float32)  # Upcast rounded value like LlamaRMSNorm
+
+        variance = tl.sum(hidden_states * hidden_states, axis=0) / number_of_columns
+        inverse_rms = tl.rsqrt(variance + variance_epsilon)
+
+        normalized_output = (hidden_states * inverse_rms).to(
+            normalized_output_ptr.dtype.element_ty
+        ) * weight
+        tl.store(
+            normalized_output_ptr + row * normalized_output_stride + columns,
+            normalized_output,
+            mask=mask,
+        )
+
+        row += row_step
